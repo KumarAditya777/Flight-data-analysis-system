@@ -1,0 +1,4 @@
+airline_data.db
+__pycache__/
+*.pyc
+instance/

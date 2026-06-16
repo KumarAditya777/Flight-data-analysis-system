@@ -1,109 +1,158 @@
-<!DOCTYPE html>
-<html lang="en" data-bs-theme="dark">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Airline Market Demand Analytics{% endblock %}</title>
-    
-    <!-- Bootstrap CSS with Replit dark theme -->
-    <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet">
-    
-    <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    
-    <!-- Feather Icons -->
-    <script src="https://unpkg.com/feather-icons"></script>
-    
-    <!-- Custom CSS -->
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/custom.css') }}">
-</head>
-<body>
-    <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
-        <div class="container">
-            <a class="navbar-brand" href="{{ url_for('index') }}">
-                <i data-feather="trending-up" class="me-2"></i>
-                Airline Market Analytics
-            </a>
-            
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'index' %}active{% endif %}" href="{{ url_for('index') }}">
-                            <i data-feather="home" class="me-1"></i>Dashboard
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'analysis' %}active{% endif %}" href="{{ url_for('analysis') }}">
-                            <i data-feather="bar-chart-2" class="me-1"></i>Analysis
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'insights' %}active{% endif %}" href="{{ url_for('insights') }}">
-                            <i data-feather="zap" class="me-1"></i>AI Insights
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link {% if request.endpoint == 'tutorial' %}active{% endif %}" href="{{ url_for('tutorial') }}">
-                            <i data-feather="help-circle" class="me-1"></i>Tutorial
-                        </a>
-                    </li>
-                </ul>
-            </div>
-        </div>
-    </nav>
+import json
+import os
+import logging
+from collections import defaultdict
 
-    <!-- Flash Messages -->
-    {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-            <div class="container mt-3">
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ 'danger' if category == 'error' else 'warning' if category == 'warning' else 'info' if category == 'info' else 'success' }} alert-dismissible fade show" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
-                {% endfor %}
-            </div>
-        {% endif %}
-    {% endwith %}
+try:
+    from openai import OpenAI
+    OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+    openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+except ImportError:
+    openai_client = None
 
-    <!-- Main Content -->
-    <main class="container my-4">
-        {% block content %}{% endblock %}
-    </main>
 
-    <!-- Footer -->
-    <footer class="bg-dark text-light py-4 mt-5">
-        <div class="container">
-            <div class="row">
-                <div class="col-md-6">
-                    <h6>Airline Market Demand Analytics</h6>
-                    <p class="mb-0">Helping hostels make data-driven decisions across Australia</p>
-                </div>
-                <div class="col-md-6 text-md-end">
-                    <small class="text-muted">
-                        Powered by AI &amp; Real-time Data
-                    </small>
-                </div>
-            </div>
-        </div>
-    </footer>
+def generate_insights(flight_data):
+    try:
+        return analyze_market_trends(flight_data)
+    except Exception as e:
+        logging.error(f"Error generating insights: {str(e)}")
+        return []
 
-    <!-- Bootstrap JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    
-    <!-- Custom JS -->
-    <script src="{{ url_for('static', filename='js/charts.js') }}"></script>
-    
-    <!-- Initialize Feather Icons -->
-    <script>
-        feather.replace();
-    </script>
 
-    {% block scripts %}{% endblock %}
-</body>
-</html>
+def analyze_market_trends(flight_data):
+    try:
+        if not openai_client:
+            return generate_basic_analysis(flight_data)
+
+        data_summary = prepare_data_summary(flight_data)
+        return get_ai_insights(data_summary)
+
+    except Exception as e:
+        logging.error(f"Error analyzing market trends: {str(e)}")
+        return generate_basic_analysis(flight_data)
+
+
+def prepare_data_summary(flight_data):
+    try:
+        summary = {
+            'total_flights': len(flight_data),
+            'routes': defaultdict(list),
+            'airlines': defaultdict(list),
+        }
+
+        for flight in flight_data:
+            route = f"{flight.origin}-{flight.destination}"
+            summary['routes'][route].append({'price': flight.price, 'airline': flight.airline})
+            summary['airlines'][flight.airline].append({'price': flight.price, 'route': route})
+
+        summary['stats'] = calculate_statistics(flight_data)
+        return summary
+
+    except Exception as e:
+        logging.error(f"Error preparing data summary: {str(e)}")
+        return {}
+
+
+def get_ai_insights(data_summary):
+    try:
+        if not openai_client:
+            return []
+
+        prompt = f"""
+Analyze the following Australian domestic flight data and provide business insights for hostel planning.
+Data: {json.dumps(data_summary, indent=2, default=str)}
+
+Respond as JSON with keys: demand_trends, price_analysis, market_opportunities, hostel_strategy, seasonal_patterns.
+Each key maps to an object with: summary (string), insights (list of strings).
+"""
+        response = openai_client.chat.completions.create(
+            model="gpt-4o",
+            messages=[
+                {"role": "system", "content": "You are an expert travel industry analyst."},
+                {"role": "user", "content": prompt}
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.7
+        )
+
+        content = response.choices[0].message.content
+        ai_response = json.loads(content)
+        return format_insights_for_display(ai_response)
+
+    except Exception as e:
+        logging.error(f"Error getting AI insights: {str(e)}")
+        return []
+
+
+def calculate_statistics(flight_data):
+    try:
+        prices = [f.price for f in flight_data if f.price]
+        return {
+            'total_flights': len(flight_data),
+            'avg_price': sum(prices) / len(prices) if prices else 0,
+            'min_price': min(prices) if prices else 0,
+            'max_price': max(prices) if prices else 0,
+            'unique_routes': len(set(f"{f.origin}-{f.destination}" for f in flight_data)),
+            'unique_airlines': len(set(f.airline for f in flight_data if f.airline))
+        }
+    except Exception as e:
+        logging.error(f"Error calculating statistics: {str(e)}")
+        return {}
+
+
+def format_insights_for_display(ai_insights):
+    try:
+        formatted = []
+        for category, data in ai_insights.items():
+            insight = {
+                'title': category.replace('_', ' ').title(),
+                'summary': data.get('summary', ''),
+                'details': data.get('insights', []) + data.get('recommendations', []) + data.get('opportunities', []),
+                'category': category
+            }
+            formatted.append(insight)
+        return formatted
+    except Exception as e:
+        logging.error(f"Error formatting insights: {str(e)}")
+        return []
+
+
+def generate_basic_analysis(flight_data):
+    try:
+        if not flight_data:
+            return [{'title': 'No Data Available', 'summary': 'No flight data available for analysis.', 'details': [], 'category': 'error'}]
+
+        stats = calculate_statistics(flight_data)
+
+        route_counts = defaultdict(int)
+        for flight in flight_data:
+            route_counts[f"{flight.origin}-{flight.destination}"] += 1
+
+        popular_routes = sorted(route_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+
+        insights = [
+            {
+                'title': 'Popular Routes',
+                'summary': f'Analysis of {stats["total_flights"]} flights across {stats["unique_routes"]} routes.',
+                'details': [f"{route}: {count} flights" for route, count in popular_routes],
+                'category': 'demand_trends'
+            }
+        ]
+
+        if stats['avg_price'] > 0:
+            insights.append({
+                'title': 'Price Analysis',
+                'summary': f'Average flight price: ${stats["avg_price"]:.2f}',
+                'details': [
+                    f"Minimum price: ${stats['min_price']:.2f}",
+                    f"Maximum price: ${stats['max_price']:.2f}",
+                    f"Price range: ${stats['max_price'] - stats['min_price']:.2f}"
+                ],
+                'category': 'price_analysis'
+            })
+
+        return insights
+
+    except Exception as e:
+        logging.error(f"Error generating basic analysis: {str(e)}")
+        return [{'title': 'Analysis Error', 'summary': 'Error generating analysis.', 'details': [], 'category': 'error'}]
